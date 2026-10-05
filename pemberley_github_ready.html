@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pemberley: Build a Land System</title>
+<style>
+:root{--ink:#24312d;--paper:#f7f4ec;--panel:#fffdf8;--line:#c8c0ad;--accent:#7b2632;--gold:#b38a3b;--blue:#477b9b;--green:#52704e}
+*{box-sizing:border-box}body{margin:0;background:#e8e3d6;color:var(--ink);font-family:Georgia,serif}
+.app{display:grid;grid-template-columns:minmax(620px,1fr) 430px;height:100vh;overflow:hidden}
+.map{position:relative;overflow:auto;padding:14px;background:#dcd7ca;display:flex;align-items:center;justify-content:center}
+.stage{position:relative;width:min(100%,1120px);aspect-ratio:1382/922;background:#fff;box-shadow:0 4px 24px #0002}
+.stage>img{width:100%;height:100%;display:block}
+.svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.pin{position:absolute;transform:translate(-50%,-50%);width:25px;height:25px;border:2px solid white;border-radius:50%;background:var(--accent);color:#fff;font:bold 14px Georgia;cursor:pointer;z-index:4;box-shadow:0 1px 5px #0008}
+.pin:hover,.pin.sel{transform:translate(-50%,-50%) scale(1.18);background:var(--gold)}
+.routehit{position:absolute;transform:translate(-50%,-50%);height:18px;border:2px solid #477b9b;background:#477b9b22;border-radius:12px;z-index:3;cursor:pointer;padding:0}.routehit:hover,.routehit.active{background:#477b9b55;border-color:#2e5f79}
+.pinlabel{position:absolute;transform:translate(-50%,0);background:#fffdf0dd;border:1px solid #918873;border-radius:4px;padding:2px 5px;font-size:11px;white-space:nowrap;pointer-events:none;z-index:3}
+.sidebar{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-width:0}
+.header{padding:16px 18px 12px;background:#f0ebde;border-bottom:1px solid var(--line)}
+.header h1{margin:0;font-size:22px}.header p{margin:4px 0 0;font-size:12px;color:#60645e}
+.tabs{display:flex;border-bottom:1px solid var(--line);background:#faf7ef}
+.tab{flex:1;padding:9px 3px;border:0;background:none;border-bottom:3px solid transparent;font-family:inherit;cursor:pointer;font-size:12px}
+.tab.active{border-color:var(--accent);font-weight:bold}
+.content{overflow:auto;padding:14px;flex:1}.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:11px}
+h2{font-size:18px;margin:0 0 7px}h3{font-size:15px;margin:0 0 7px}
+p{line-height:1.4;margin:6px 0}.small{font-size:12px;color:#62665f}.muted{color:#777}
+label{display:block;font-size:12px;font-weight:bold;margin:8px 0 3px}
+input,textarea,select{width:100%;padding:8px;border:1px solid #b9b19e;border-radius:5px;background:#fffdf8;font-family:inherit}
+textarea{min-height:75px;resize:vertical}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{font-family:inherit;cursor:pointer}.primary,.secondary,.danger{border:0;border-radius:6px;padding:8px 10px}
+.primary{background:var(--accent);color:white}.secondary{background:#e9e3d7;color:#303630}.danger{background:#eee0e0;color:#7b2632}
+.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.chip{display:inline-block;font-size:11px;padding:3px 6px;border-radius:10px;background:#eee8dc;margin:2px}
+.note{border-left:4px solid var(--gold);background:#faf7ee;padding:8px;margin:7px 0;border-radius:0 5px 5px 0}
+.case{border-left:4px solid var(--blue);background:#f4f8fa;padding:9px;margin:7px 0;border-radius:0 5px 5px 0}
+.rule{border-left:4px solid var(--green);background:#f4f7f1;padding:9px;margin:7px 0;border-radius:0 5px 5px 0}
+.notice{padding:9px;background:#f3eee2;border-radius:6px;font-size:12px}
+hr{border:0;border-top:1px solid var(--line);margin:12px 0}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#26332f;color:#fff;padding:9px 14px;border-radius:7px;opacity:0;transition:.2s;z-index:20}
+.toast.show{opacity:1}
+@media(max-width:950px){.app{grid-template-columns:1fr;height:auto;min-height:100vh}.sidebar{border-left:0;border-top:1px solid var(--line);min-height:650px}}
+</style>
+</head>
+<body>
+<div id="loadError" style="display:none;position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;max-width:90%;padding:10px 14px;background:#fff0f0;border:1px solid #b66;border-radius:7px;font-family:Arial,sans-serif;font-size:14px;color:#733"></div>
+<div class="app">
+<section class="map">
+<div class="stage" id="stage">
+<img id="base" alt="Pemberley Estate title plan">
+<svg class="svg" id="svg" viewBox="0 0 1382 922" preserveAspectRatio="none"></svg>
+</div>
+</section>
+<aside class="sidebar">
+<div class="header">
+<h1>Pemberley: Build a Land System</h1>
+<p>Collaborative property-law simulation for a new community of 100 people.</p>
+</div>
+<nav class="tabs">
+<button class="tab active" data-tab="brief">Brief</button>
+<button class="tab" data-tab="map">Map</button>
+<button class="tab" data-tab="rules">Rules</button>
+<button class="tab" data-tab="cases">Cases</button>
+<button class="tab" data-tab="record">Record</button>
+</nav>
+<div class="content" id="content"></div>
+</aside>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+window.addEventListener('error', function(e){
+  var box=document.getElementById('loadError');
+  if(box){box.style.display='block';box.textContent='The activity encountered a script error: '+(e.message||'unknown error');}
+});
+const imgData = "pemberley_map.png";
+document.getElementById("base").src=imgData;
+
+const places={
+pemberley:{name:"Pemberley",x:882,y:211,type:"principal house"},
+vicarage:{name:"Vicarage",x:522,y:397,type:"house"},
+dower:{name:"Dower House",x:1194,y:355,type:"house"},
+oldlake:{name:"Old Lake House",x:1192,y:607,type:"house"},
+groom:{name:"Groom's Cottage",x:751,y:742,type:"cottage"},
+stable:{name:"Stable Yard",x:659,y:558,type:"buildings"},
+mainroad:{name:"Main Estate Road / Drive",x:820,y:365,type:"road",route:true,angle:22,length:215},
+westtrack:{name:"West Wood Track",x:560,y:460,type:"track / path",route:true,angle:-58,length:145},
+lakepath:{name:"Lake Path",x:1010,y:525,type:"footpath / track",route:true,angle:8,length:165},
+villageroad:{name:"Pemberley Village Road",x:530,y:650,type:"road",route:true,angle:18,length:185},
+northtrack:{name:"North Wood Track",x:735,y:165,type:"track / path",route:true,angle:-10,length:140},
+northwood:{name:"North Wood",x:700,y:103,type:"woodland"},
+westwood:{name:"West Wood",x:500,y:295,type:"woodland"},
+eastwood:{name:"East Wood",x:1102,y:500,type:"woodland"},
+lake:{name:"Pemberley Lake",x:1000,y:625,type:"lake"},
+park:{name:"Open parkland",x:900,y:430,type:"open land"}
+};
+const cases={
+colonel:{title:"1. Colonel Fitzwilliam",party:"Colonel Fitzwilliam",facts:"Wants to live in Old Lake House. He is concerned that if surrounding land is allocated to other people he may be unable to reach it. He also wants to fish in Pemberley Lake.",questions:["How should access to Old Lake House be secured?","Should the right be personal or attached to the house?","Who should control fishing in the lake?","What should happen if Old Lake House is transferred?"]},
+wickham:{title:"2. George Wickham",party:"George Wickham",facts:"Wants to hunt game, fish and gather firewood wherever he likes across Pemberley, regardless of any boundaries established.",questions:["Should everyone have unrestricted resource rights?","Could rights to natural resources be allocated collectively or limited?","What conflicts might arise between resource rights and ownership/occupation?"]},
+mary:{title:"3. Mary Bennet",party:"Mary Bennet",facts:"Wants part of Pemberley Woods kept completely undisturbed so she has somewhere peaceful to read and practise her singing.",questions:["Should this be a private right, a community rule, or a land-use restriction?","Who should enforce it?","What happens if the land is transferred?"]},
+lydia:{title:"4. Lydia Bennet and the cavern",party:"Lydia Bennet / Lieutenant Denny",facts:"Lydia discovers an entrance to a cavern near Groom's Cottage. The cavern extends beneath the Stable Yard and contains a valuable mineral deposit. Lydia claims the right to extract and sell it because she discovered it. Lieutenant Denny says anything beneath the Stable Yard belongs to whoever receives the Stable Yard.",questions:["Who should own or control the cavern and minerals?","Does surface allocation answer the question?","How should discovery, extraction and sale be regulated?","Should the record identify subsurface rights separately?"]}
+};
+let state=JSON.parse(localStorage.getItem("pemberleyClassroom")||"null")||{
+owners:{pemberley:"",vicarage:"",dower:"",oldlake:"",groom:"",stable:"",northwood:"",westwood:"",eastwood:"",lake:"",park:""},
+notes:[],rules:[],rights:[],allocations:[],selected:"pemberley",activeCase:"colonel"
+};
+function save(){localStorage.setItem("pemberleyClassroom",JSON.stringify(state))}
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function toast(s){let t=document.getElementById("toast");t.textContent=s;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1700)}
+function pct(n,d){return n/d*100+"%"}
+function cardTitle(title,sub=""){return `<h2>${esc(title)}</h2>${sub?`<div class="small">${esc(sub)}</div>`:""}`}
+function renderPins(){
+document.querySelectorAll(".pin,.pinlabel,.routehit").forEach(e=>e.remove());
+for(const [id,p] of Object.entries(places)){
+  if(p.route){
+    let r=document.createElement("button");
+    r.className="routehit "+(state.selected===id?"active":"");
+    r.style.left=pct(p.x,1382);r.style.top=pct(p.y,922);r.style.width=(p.length||150)+"px";
+    r.style.transform=`translate(-50%,-50%) rotate(${p.angle||0}deg)`;
+    r.title=p.name;r.setAttribute("aria-label","Select "+p.name);
+    r.onclick=()=>{state.selected=id;save();renderMapTab();renderPins()};
+    document.getElementById("stage").appendChild(r);
+    let rl=document.createElement("div");rl.className="pinlabel";rl.textContent=p.name;
+    rl.style.left=pct(p.x,1382);rl.style.top=pct(p.y+15,922);document.getElementById("stage").appendChild(rl);
+  }else{
+    let b=document.createElement("button");b.className="pin "+(state.selected===id?"sel":"");b.textContent="•";b.style.left=pct(p.x,1382);b.style.top=pct(p.y,922);b.title=p.name;
+    b.onclick=()=>{state.selected=id;save();renderMapTab();renderPins()};document.getElementById("stage").appendChild(b);
+    let l=document.createElement("div");l.className="pinlabel";l.style.left=pct(p.x,1382);l.style.top=pct(p.y+18,922);l.textContent=p.name;document.getElementById("stage").appendChild(l);
+  }
+}
+drawOverlay();
+}
+function drawOverlay(){
+let svg=document.getElementById("svg");svg.innerHTML="";
+const colors={access:"#477b9b",resource:"#52704e",restriction:"#9b5b2d",allocation:"#7b2632"};
+for(const r of state.rights){
+let a=places[r.from],b=places[r.to];if(!a||!b)continue;
+if(r.kind==="access"){
+let line=document.createElementNS("http://www.w3.org/2000/svg","line");line.setAttribute("x1",a.x);line.setAttribute("y1",a.y);line.setAttribute("x2",b.x);line.setAttribute("y2",b.y);line.setAttribute("stroke",colors.access);line.setAttribute("stroke-width","8");line.setAttribute("stroke-dasharray","18 9");line.setAttribute("stroke-linecap","round");line.setAttribute("opacity",".8");svg.appendChild(line)
+}else{
+let c=document.createElementNS("http://www.w3.org/2000/svg","circle");c.setAttribute("cx",a.x);c.setAttribute("cy",a.y);c.setAttribute("r","34");c.setAttribute("fill",colors[r.kind]||colors.allocation);c.setAttribute("fill-opacity",".16");c.setAttribute("stroke",colors[r.kind]||colors.allocation);c.setAttribute("stroke-width","3");svg.appendChild(c)
+}
+}
+}
+function renderBrief(){
+document.getElementById("content").innerHTML=`
+<div class="card">${cardTitle("The problem","You are one of the only law students in a group of 100 people establishing a new community at Pemberley.")}
+<p>Pemberley has houses, cottages, fertile pasture, woodland, a lake, a river, gardens, parkland, roads and tracks. There is currently <b>no system regulating land use</b>.</p>
+<div class="notice"><b>Your task:</b> devise a system that makes the land usable, records rights, deals with conflicts and gives the community a workable structure.</div></div>
+<div class="card"><h3>Questions to investigate</h3><ol class="small">
+<li>What problems are likely to arise?</li><li>How should those problems be dealt with?</li><li>How could land be divided? What alternatives are there?</li><li>Who should use natural resources?</li><li>Should records be kept? What should they contain?</li></ol></div>
+<div class="card"><h3>How to use the map</h3><p class="small">Start by selecting <b>Map</b>. Click houses, woodland, the lake, parkland, <b>or the highlighted roads and paths</b>. Add notes, propose rules and create rights. Then work through the four community members' cases.</p>
+<div class="actions"><button class="primary" onclick="showTab('map')">Start on the map</button><button class="secondary" onclick="showTab('cases')">View cases</button></div></div>
+<div class="card"><h3>Important teaching idea</h3><p class="small">Students are not being asked merely to name an existing doctrine. They are designing a system from first principles. The activity therefore lets them propose ownership, shared rights, access rights, resource rights, restrictions and recording mechanisms before asking what legal concepts those choices resemble.</p></div>`;
+}
+function renderMapTab(){
+let p=places[state.selected];
+let notes=state.notes.filter(n=>n.place===state.selected);
+let isRoute=!!p.route;
+let owner=isRoute?"":(state.owners[state.selected]||"");
+document.getElementById("content").innerHTML=`
+<div class="card">${cardTitle(p.name,p.type)}
+${isRoute?`<div class="notice"><b>Road / path selected.</b> Decide whether this route is public, private, shared or subject to a particular right of way. You can also set rules about who may cross, by what means, for what purpose, and who must maintain it.</div>`:`<label>Proposed holder / allocation</label><input id="owner" value="${esc(owner)}" placeholder="person, family, community body, cooperative…"><div class="actions"><button class="primary" id="saveOwner">Save allocation</button></div>`}
+<hr><h3>Add a note about this ${isRoute?"route":"land"}</h3>
+<textarea id="noteText" placeholder="${isRoute?"e.g. The owner of Old Lake House has a right of way; carts allowed; no commercial traffic; route maintained by the community…":"e.g. fertile pasture should be common grazing land; access is difficult; protect woodland…"}"></textarea>
+<div class="actions"><button class="secondary" id="addNote">Add note</button></div></div>
+<div class="card"><h3>Propose a right or restriction</h3>
+<div class="row"><div><label>Type</label><select id="kind"><option value="access">Access right / right of way</option><option value="resource">Natural-resource right</option><option value="restriction">Use restriction</option><option value="allocation">Allocation / ownership</option></select></div>
+<div><label>Who benefits?</label><input id="holder" placeholder="name/group"></div></div>
+<label>Other land / route (if relevant)</label><select id="to">${Object.entries(places).filter(([k])=>k!==state.selected).map(([k,v])=>`<option value="${k}">${esc(v.name)}</option>`).join("")}</select>
+<label>Rule / terms</label><textarea id="terms" placeholder="${isRoute?"What can happen on this road/path? Who may cross? Pedestrians, carts, vehicles, animals? Are there times/weight limits? Who maintains it?":"What exactly can/cannot be done? For how long? Who can enforce it?"}"></textarea>
+<div class="actions"><button class="primary" id="addRight">Add to system</button></div></div>
+<div class="card"><h3>Notes on ${esc(p.name)}</h3>${notes.length?notes.map(n=>`<div class="note"><b>${esc(n.author||"Group")}</b><br>${esc(n.text)}<br><button class="danger" data-delete-note="${n.id}">Delete</button></div>`).join(""):`<div class="muted small">No notes yet.</div>`}</div>`;
+if(document.getElementById("saveOwner")){
+ document.getElementById("saveOwner").onclick=()=>{state.owners[state.selected]=document.getElementById("owner").value;save();toast("Allocation saved")};
+}
+document.getElementById("addNote").onclick=()=>{let t=document.getElementById("noteText").value.trim();if(!t)return;state.notes.push({id:"N"+Date.now(),place:state.selected,text:t,author:"Student group"});save();renderMapTab();renderPins();toast("Note added")};
+document.querySelectorAll("[data-delete-note]").forEach(btn=>btn.onclick=()=>{state.notes=state.notes.filter(n=>n.id!==btn.dataset.deleteNote);save();renderMapTab();renderPins()});
+document.getElementById("addRight").onclick=()=>{let holder=document.getElementById("holder").value.trim(),terms=document.getElementById("terms").value.trim();if(!holder||!terms){toast("Add a beneficiary and terms");return}state.rights.push({id:"R"+Date.now(),from:state.selected,to:document.getElementById("to").value,kind:document.getElementById("kind").value,holder,terms});save();renderMapTab();renderPins();toast("Rule/right added to map")};
+}
+function deleteNote(id){state.notes=state.notes.filter(n=>n.id!==id);save();renderMapTab()}
+function renderRules(){
+document.getElementById("content").innerHTML=`
+<div class="card">${cardTitle("Community rulebook","Students build the rules the new community will live under.")}
+<label>Rule title</label><input id="rt" placeholder="e.g. Shared grazing rights">
+<label>Rule</label><textarea id="rb" placeholder="State the proposed rule clearly."></textarea>
+<label>Reason / problem addressed</label><textarea id="rr" placeholder="What problem does the rule solve?"></textarea>
+<div class="actions"><button class="primary" id="addRule">Add rule</button></div></div>
+<div class="card"><h3>Current proposed rules</h3>${state.rules.length?state.rules.map(r=>`<div class="rule"><b>${esc(r.title)}</b><p>${esc(r.body)}</p><div class="small"><b>Problem addressed:</b> ${esc(r.reason)}</div><button class="danger" onclick="deleteRule('${r.id}')">Delete</button></div>`).join(""):`<div class="muted small">No rules yet. Ask the group to agree what should govern ownership, access, resources, boundaries and disputes.</div>`}</div>
+<div class="card"><h3>Possible categories</h3><span class="chip">Ownership</span><span class="chip">Access</span><span class="chip">Resource use</span><span class="chip">Conservation</span><span class="chip">Subdivision</span><span class="chip">Transfer</span><span class="chip">Dispute resolution</span><span class="chip">Registration</span></div>`;
+document.getElementById("addRule").onclick=()=>{let t=document.getElementById("rt").value.trim(),b=document.getElementById("rb").value.trim(),r=document.getElementById("rr").value.trim();if(!t||!b){toast("Add a title and rule");return}state.rules.push({id:"Q"+Date.now(),title:t,body:b,reason:r});save();renderRules();toast("Rule added")};
+}
+function deleteRule(id){state.rules=state.rules.filter(r=>r.id!==id);save();renderRules()}
+function renderCases(){
+let c=cases[state.activeCase];
+document.getElementById("content").innerHTML=`
+<div class="card">${cardTitle("Case studies","Apply the community system to specific requests.")}
+<div class="actions">${Object.entries(cases).map(([k,v])=>`<button class="${k===state.activeCase?"primary":"secondary"}" onclick="selectCase('${k}')">${esc(v.title.split(".")[0])}</button>`).join("")}</div></div>
+<div class="case"><h3>${esc(c.title)}</h3><p>${esc(c.facts)}</p></div>
+<div class="card"><h3>Questions for the group</h3><ul>${c.questions.map(q=>`<li>${esc(q)}</li>`).join("")}</ul></div>
+<div class="card"><h3>Your proposed solution</h3><textarea id="caseAnswer" placeholder="Explain what your system should do, which land/right is involved, who benefits, who bears the burden, and how it should be recorded.">${esc(state.caseAnswers?.[state.activeCase]||"")}</textarea>
+<div class="actions"><button class="primary" id="saveAnswer">Save response</button><button class="secondary" onclick="showTab('map')">Implement it on the map</button></div></div>
+<div class="notice"><b>Extension:</b> Ask the group to identify whether its proposed solution resembles an ownership right, lease, easement, profit, covenant, licence, common right, conservation restriction, or a new category they would invent.</div>`;
+document.getElementById("saveAnswer").onclick=()=>{state.caseAnswers=state.caseAnswers||{};state.caseAnswers[state.activeCase]=document.getElementById("caseAnswer").value;save();toast("Case response saved")};
+}
+function selectCase(k){state.activeCase=k;save();renderCases()}
+function renderRecord(){
+let interests=state.rights;
+document.getElementById("content").innerHTML=`
+<div class="card">${cardTitle("Community land record","A proposed register of allocations, rules and rights.")}
+<p class="small">Ask students what information should be recorded so that a later purchaser, occupier or neighbour can understand the system.</p>
+<div class="actions"><button class="primary" id="export">Export group work</button><button class="secondary" id="print">Print record</button><button class="danger" id="reset">Reset</button></div></div>
+<div class="card"><h3>Land allocations</h3>${Object.entries(state.owners).filter(([k,v])=>v).map(([k,v])=>`<div class="note"><b>${esc(places[k].name)}</b> — ${esc(v)}</div>`).join("")||'<div class="muted small">None recorded.</div>'}</div>
+<div class="card"><h3>Rights and restrictions</h3>${interests.map(r=>`<div class="rule"><b>${esc(r.kind)}</b>: ${esc(r.holder)} — ${esc(places[r.from].name)} → ${esc(places[r.to].name)}<br><span class="small">${esc(r.terms)}</span></div>`).join("")||'<div class="muted small">None recorded.</div>'}</div>
+<div class="card"><h3>Rules</h3>${state.rules.map(r=>`<div class="rule"><b>${esc(r.title)}</b><br>${esc(r.body)}</div>`).join("")||'<div class="muted small">None recorded.</div>'}</div>`;
+document.getElementById("export").onclick=()=>{let a=document.createElement("a"),b=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});a.href=URL.createObjectURL(b);a.download="pemberley-community-work.json";a.click();URL.revokeObjectURL(a.href)};
+document.getElementById("print").onclick=()=>window.print();
+document.getElementById("reset").onclick=()=>{if(confirm("Delete this group's work and start again?")){localStorage.removeItem("pemberleyClassroom");location.reload()}};
+}
+function showTab(tab){
+document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.tab===tab));
+if(tab==="brief")renderBrief();if(tab==="map")renderMapTab();if(tab==="rules")renderRules();if(tab==="cases")renderCases();if(tab==="record")renderRecord();
+}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>showTab(t.dataset.tab));
+renderPins();renderBrief();
+</script>
+</body>
+</html>
